@@ -1,0 +1,20 @@
+{
+  "name": "wifi-analyzer",
+  "version": "1.0.0",
+  "description": "Công cụ phân tích Wi-Fi xung quanh (Channel Graph, Time Graph, Channel Rating, AP List)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node server.js --demo",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "node-wifi": "^2.0.16",
+    "oui-data": "^2.1.41"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

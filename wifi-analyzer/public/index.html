@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WiFi Analyzer</title>
+  <meta name="description" content="Phân tích Wi-Fi xung quanh: biểu đồ kênh, lịch sử tín hiệu, đánh giá kênh và danh sách Access Point.">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233df2c8' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M2 8.8a15 15 0 0 1 20 0'/%3E%3Cpath d='M5.4 12.5a10 10 0 0 1 13.2 0'/%3E%3Cpath d='M8.9 16.2a5 5 0 0 1 6.2 0'/%3E%3Ccircle cx='12' cy='19.6' r='1.1' fill='%233df2c8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <!-- Tailwind CDN chỉ bổ trợ tiện ích; bố cục chính nằm trong styles.css nên trang vẫn chạy khi offline. -->
+  <script async src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+        <path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M5.4 12.5a10 10 0 0 1 13.2 0"/><path d="M8.9 16.2a5 5 0 0 1 6.2 0"/><circle cx="12" cy="19.6" r="1.1" fill="currentColor"/>
+      </svg>
+      <div>
+        <h1>WiFi Analyzer</h1>
+        <p>Giám sát mạng không dây xung quanh bạn</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <span id="status" class="status busy" role="status" aria-live="polite"><span class="dot"></span><span id="statusText">Đang khởi động…</span></span>
+      <label class="switch text-sm"><input type="checkbox" id="autoToggle" role="switch" checked><span class="track"></span><span>Quét tự động</span></label>
+      <label class="sr-only" for="intervalSel" style="position:absolute;left:-9999px">Chu kỳ quét</label>
+      <select id="intervalSel" class="field" title="Chu kỳ quét tự động">
+        <option value="3000">3 giây</option>
+        <option value="5000">5 giây</option>
+        <option value="10000">10 giây</option>
+      </select>
+      <button id="scanNow" class="btn btn-primary" type="button">Quét ngay</button>
+      <label class="switch text-sm" title="Dùng dữ liệu giả lập để xem thử giao diện"><input type="checkbox" id="demoToggle" role="switch"><span class="track"></span><span>Dữ liệu demo</span></label>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" role="alert" hidden>
+    <strong id="bannerTitle">Không quét được</strong>
+    <div class="grow"><span id="bannerMsg"></span><small id="bannerHint"></small></div>
+    <button id="bannerDemo" class="btn" type="button">Xem thử bằng dữ liệu demo</button>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Chế độ xem">
+    <button class="tab" role="tab" id="tab-channel" aria-controls="panel-channel" aria-selected="true" data-tab="channel">Channel Graph</button>
+    <button class="tab" role="tab" id="tab-time" aria-controls="panel-time" aria-selected="false" tabindex="-1" data-tab="time">Time Graph</button>
+    <button class="tab" role="tab" id="tab-rating" aria-controls="panel-rating" aria-selected="false" tabindex="-1" data-tab="rating">Channel Rating</button>
+    <button class="tab" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false" tabindex="-1" data-tab="list">AP List</button>
+  </nav>
+
+  <main class="panel">
+
+    <!-- Tab 1: Channel Graph -->
+    <section id="panel-channel" role="tabpanel" aria-labelledby="tab-channel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Băng tần" data-seg="band">
+          <button type="button" data-v="2.4" aria-pressed="true">2.4 GHz</button>
+          <button type="button" data-v="5" aria-pressed="false">5 GHz</button>
+        </div>
+        <span class="hint" id="channelHint">Đỉnh = kênh trung tâm · chiều cao = RSSI · độ rộng chân = Channel Width. Rê chuột lên một mạng để xem chi tiết.</span>
+      </div>
+      <div class="canvas-wrap" id="wrap-channel">
+        <canvas id="cv-channel" role="img" aria-label="Biểu đồ phổ kênh Wi-Fi"></canvas>
+        <div class="tooltip" id="tip-channel" hidden></div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Time Graph -->
+    <section id="panel-time" role="tabpanel" aria-labelledby="tab-time" hidden>
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Lọc băng tần" data-seg="timeBand">
+          <button type="button" data-v="all" aria-pressed="true">Tất cả</button>
+          <button type="button" data-v="2.4" aria-pressed="false">2.4 GHz</button>
+          <button type="button" data-v="5" aria-pressed="false">5 GHz</button>
+        </div>
+        <button type="button" class="btn" id="showAllSeries">Hiện tất cả</button>
+        <span class="hint">60 giây gần nhất · bấm vào tên mạng bên dưới để ẩn/hiện đường · đi bộ quanh nhà để tìm vùng chết.</span>
+      </div>
+      <div class="canvas-wrap" id="wrap-time">
+        <canvas id="cv-time" role="img" aria-label="Biểu đồ cường độ tín hiệu theo thời gian"></canvas>
+        <div class="tooltip" id="tip-time" hidden></div>
+      </div>
+      <div class="legend" id="legend" aria-label="Danh sách mạng trên đồ thị"></div>
+    </section>
+
+    <!-- Tab 3: Channel Rating -->
+    <section id="panel-rating" role="tabpanel" aria-labelledby="tab-rating" hidden>
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Băng tần" data-seg="band">
+          <button type="button" data-v="2.4" aria-pressed="true">2.4 GHz</button>
+          <button type="button" data-v="5" aria-pressed="false">5 GHz</button>
+        </div>
+        <div class="seg" role="group" aria-label="Sắp xếp" data-seg="ratingSort">
+          <button type="button" data-v="channel" aria-pressed="true">Theo số kênh</button>
+          <button type="button" data-v="rating" aria-pressed="false">Tốt nhất trước</button>
+        </div>
+        <span class="hint">Điểm dựa trên tổng công suất của các mạng trùng kênh và chồng lấn kênh.</span>
+      </div>
+      <div class="rating-body" id="ratingBody"></div>
+    </section>
+
+    <!-- Tab 4: AP List -->
+    <section id="panel-list" role="tabpanel" aria-labelledby="tab-list" hidden>
+      <div class="toolbar">
+        <label class="sr-only" for="search" style="position:absolute;left:-9999px">Tìm kiếm</label>
+        <input id="search" class="field input" type="search" placeholder="Tìm theo SSID, BSSID, hãng, kênh…" autocomplete="off" spellcheck="false">
+        <select id="listBand" class="field" aria-label="Lọc băng tần">
+          <option value="all">Mọi băng tần</option>
+          <option value="2.4">2.4 GHz</option>
+          <option value="5">5 GHz</option>
+          <option value="6">6 GHz</option>
+        </select>
+        <select id="listSec" class="field" aria-label="Lọc bảo mật">
+          <option value="all">Mọi loại bảo mật</option>
+          <option value="secure">Có mật khẩu</option>
+          <option value="open">Mạng mở</option>
+        </select>
+        <span class="spacer"></span>
+        <span class="hint" id="listCount"></span>
+        <button type="button" class="btn" id="exportCsv">Xuất CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table class="ap" id="apTable">
+          <thead>
+            <tr>
+              <th scope="col" data-key="ssid"><button type="button">SSID</button></th>
+              <th scope="col" data-key="bssid"><button type="button">BSSID (MAC)</button></th>
+              <th scope="col" data-key="vendor"><button type="button">Nhà sản xuất</button></th>
+              <th scope="col" data-key="channel" class="num"><button type="button">Kênh</button></th>
+              <th scope="col" data-key="frequency" class="num"><button type="button">Tần số</button></th>
+              <th scope="col" data-key="width" class="num"><button type="button">Độ rộng</button></th>
+              <th scope="col" data-key="rssi"><button type="button">RSSI</button></th>
+              <th scope="col" data-key="security"><button type="button">Bảo mật</button></th>
+              <th scope="col" data-key="distance" class="num"><button type="button" title="Ước tính theo suy hao không gian tự do">Khoảng cách</button></th>
+            </tr>
+          </thead>
+          <tbody id="apBody"></tbody>
+        </table>
+      </div>
+      <div class="foot">Khoảng cách chỉ là ước tính thô từ công thức suy hao không gian tự do <span class="mono">d = 10^((27.55 − 20·log₁₀(f) + |RSSI|) / 20)</span>; tường, vật cản và công suất phát thực tế sẽ làm kết quả lệch đáng kể.</div>
+    </section>
+  </main>
+
+  <footer class="notes">
+    <span>Mỗi mạng có một màu neon cố định theo BSSID, nên màu không đổi giữa các lần quét và giữa các tab.</span>
+    <span>Độ rộng kênh hiển thị 20 MHz khi hệ điều hành không cung cấp thông tin này (ví dụ Windows <span class="mono">netsh</span>).</span>
+  </footer>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
